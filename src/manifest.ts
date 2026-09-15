@@ -29,6 +29,7 @@ export const ACP_CAPABILITIES = [
   'agent.session',
   'agent.cancel',
   'agent.mode',
+  'agent.response_policy',
   'runtime.claude',
   'runtime.grok',
   'runtime.codex',

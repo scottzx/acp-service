@@ -97,8 +97,8 @@ console.log(`ACP Service running on port ${port}`);
 
 | 动作 (`action`) | 描述 | 关键参数 |
 | :--- | :--- | :--- |
-| `ensure_session` | 创建或恢复 ACP 会话 | `sessionId`, `workspacePath`, `agentType`, `permissionMode` |
-| `prompt` | 发送用户提示词与附件 | `sessionId`, `prompt`, `attachments` |
+| `ensure_session` | 创建或恢复 ACP 会话 | `sessionId`, `workspacePath`, `agentType`, `permissionMode`, `responsePolicy` |
+| `prompt` | 发送用户提示词与附件 | `sessionId`, `text`, `attachments`, `responsePolicy` |
 | `respond_permission` | 响应工具调用的权限审批 | `sessionId`, `requestId`, `decision` |
 | `respond_ask_user_question` | 响应 Grok `_x.ai/ask_user_question` | `sessionId`, `requestId`, `answers` |
 | `respond_exit_plan_mode` | 响应 Grok `_x.ai/exit_plan_mode` | `sessionId`, `requestId`, `decision` |
@@ -106,6 +106,45 @@ console.log(`ACP Service running on port ${port}`);
 | `cancel_turn` | 取消当前正在执行的轮次 | `sessionId` |
 | `get_history` | 获取当前会话权威历史切片 | `sessionId` |
 | `close_session` | 结束并销毁会话 | `sessionId` |
+
+### 3. `responsePolicy`：人机流式 vs 智能体摘要
+
+`ensure_session` 与 `prompt` 都接受可选字段 `responsePolicy`：
+
+| 值 | 默认 | 适用 | 线上推送 |
+| :--- | :--- | :--- | :--- |
+| `stream` | 是 | 人类 UI（Web Chat、终端） | 全量 `text_delta` / `tool_call` / `turn_state` |
+| `summary` | 否 | 设备 B 上的调度 Agent | 轮次结束只推 `turn_complete` + `done`，附带 `sessionRef` |
+
+```json
+{
+  "action": "prompt",
+  "sessionId": "task-456",
+  "text": "重构 backend/server.go 的鉴权逻辑",
+  "responsePolicy": "summary"
+}
+```
+
+`summary` 结束时的收敛事件：
+
+```json
+{
+  "event": "turn_complete",
+  "sessionId": "task-456",
+  "status": "completed",
+  "responsePolicy": "summary",
+  "resultText": "已重构鉴权逻辑，修改了 2 个文件，测试通过。",
+  "sessionRef": {
+    "sessionId": "task-456",
+    "turnId": 5,
+    "sessionReaderUrl": "http://<device-A>:7777"
+  }
+}
+```
+
+权限审批、`ask_user_question`、`exit_plan_mode` 仍会实时下发——否则轮次会卡住。需要推理日志或工具细节时，用 `sessionRef.sessionReaderUrl` 走 `1session` / session-reader 按需下钻。
+
+Manifest 能力位：`agent.response_policy`。
 
 ---
 

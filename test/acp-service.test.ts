@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { serveAcpService } from '../src/server.js';
-import { buildManifest } from '../src/manifest.js';
+import { ACP_CAPABILITIES, buildManifest } from '../src/manifest.js';
+import { resolveResponsePolicy } from '../src/bridge.js';
 
 test('buildManifest produces valid DreamMate Network Manifest', async () => {
   const manifest = await buildManifest('http://localhost:36812');
@@ -15,8 +16,10 @@ test('buildManifest produces valid DreamMate Network Manifest', async () => {
   assert.equal(svc.id, 'acp-service');
   assert.equal(svc.kind, 'agent_runtime');
   assert.ok(svc.capabilities.includes('agent.prompt'));
+  assert.ok(svc.capabilities.includes('agent.response_policy'));
   assert.ok(svc.capabilities.includes('runtime.claude'));
   assert.ok(svc.capabilities.includes('runtime.grok'));
+  assert.ok(ACP_CAPABILITIES.includes('agent.response_policy'));
   assert.ok(svc.access && svc.access.length > 0);
   assert.equal(svc.access[0].protocol, 'acp');
 });
@@ -91,5 +94,13 @@ test('CLI supports unified help and command forwarding', async () => {
   const configOutput = execFileSync(process.execPath, [binPath, 'config', 'show'], { encoding: 'utf-8' });
   const config = JSON.parse(configOutput);
   assert.ok(config.defaultAgent);
+});
+
+test('resolveResponsePolicy defaults to stream and accepts per-prompt override', () => {
+  assert.equal(resolveResponsePolicy(undefined, undefined), 'stream');
+  assert.equal(resolveResponsePolicy('live', 'stream'), 'stream');
+  assert.equal(resolveResponsePolicy(undefined, 'summary'), 'summary');
+  assert.equal(resolveResponsePolicy('summary', 'stream'), 'summary');
+  assert.equal(resolveResponsePolicy('stream', 'summary'), 'stream');
 });
 
