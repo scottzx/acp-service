@@ -1,6 +1,6 @@
 {
   "name": "@1agents/acp-service",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DreamMate Network ACP Agent Runtime Service: cross-agent execution runtime for Claude Code, Grok, Codex and ACP-compatible agents.",
   "keywords": [
     "dreammate",
@@ -39,7 +39,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "npm run build && node --import tsx --test test/*.test.ts",
     "prepack": "npm run build",
     "start": "tsx bin/acp-service.ts"
   },
