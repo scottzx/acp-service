@@ -1,8 +1,101 @@
 #!/usr/bin/env node
+import { execFileSync, spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import fs from 'node:fs';
 import { serveAcpService } from '../src/server.js';
 import { attachProcessSignalHandlers } from '../src/bridge.js';
 
-function parseArgs(args: string[]): {
+const require = createRequire(import.meta.url);
+const rawArgs = process.argv.slice(2);
+const invokedBin = path.basename(
+  process.argv[1] || 'acp-service',
+  path.extname(process.argv[1] || '')
+);
+
+function getAcpxCliPath(): string {
+  return require.resolve('@scottzx/1acp/dist/cli.js');
+}
+
+function getPackageVersion(): string {
+  try {
+    const pkgPath = new URL('../package.json', import.meta.url);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return pkg.version || '0.1.1';
+  } catch {
+    return '0.1.1';
+  }
+}
+
+function printServeHelp(binName: string) {
+  console.log(`用法: ${binName} serve [选项]
+
+启动 DreamMate Network ACP Agent 运行时常驻服务（HTTP + WebSocket）
+
+选项:
+  --port, -p <n>    指定监听端口（默认: 36812）
+  --host <ip>       指定绑定 IP（默认: 0.0.0.0）
+  --no-report       不向本机 node agent (36908) 报备
+  -h, --help        显示帮助信息
+`);
+}
+
+function printUnifiedHelp(binName: string) {
+  let baseHelp = '';
+  try {
+    const cliPath = getAcpxCliPath();
+    baseHelp = execFileSync(process.execPath, [cliPath, '--help'], { encoding: 'utf-8' });
+  } catch (err) {
+    baseHelp = String(err);
+  }
+
+  let help = baseHelp
+    .replace(/^Usage:\s+acpx/m, `Usage: ${binName}`)
+    .replace(
+      /Headless CLI client for the Agent Client Protocol/,
+      'Headless CLI client & DreamMate Network runtime service for the Agent Client Protocol (ACP)'
+    );
+
+  const serverCommands = `Commands:
+  serve [options]                         Start DreamMate Network ACP runtime daemon (HTTP + WS)`;
+
+  help = help.replace(/^Commands:/m, serverCommands);
+
+  const serverOptions = `Options:
+  --port, -p <n>                          Server listen port (for serve, default: 36812)
+  --host <ip>                             Server bind IP (for serve, default: 0.0.0.0)
+  --no-report                             Do not report to local dreammate-node (36908)`;
+
+  help = help.replace(/^Options:/m, serverOptions);
+
+  help = help.replaceAll(/acpx /g, `${binName} `);
+  help = help.replace(/^Examples:\n/m, `Examples:\n  ${binName} serve --port 36812\n`);
+
+  console.log(help);
+}
+
+function forwardToCli(args: string[]) {
+  const cliPath = getAcpxCliPath();
+  const child = spawn(process.execPath, [cliPath, ...args], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+
+  child.on('exit', (code, signal) => {
+    if (signal) {
+      process.kill(process.pid, signal);
+    } else {
+      process.exit(code ?? 0);
+    }
+  });
+
+  child.on('error', (err) => {
+    console.error(`[${invokedBin}] 进程启动失败:`, err.message);
+    process.exit(1);
+  });
+}
+
+function parseServerArgs(args: string[]): {
   port?: number;
   host?: string;
   report?: boolean;
@@ -13,31 +106,83 @@ function parseArgs(args: string[]): {
     if (arg === '--port' || arg === '-p') {
       const val = args[++i];
       if (val) options.port = Number.parseInt(val, 10);
-    } else if (arg === '--host' || arg === '-h') {
+    } else if (arg === '--host') {
       options.host = args[++i];
     } else if (arg === '--no-report') {
       options.report = false;
-    } else if (arg === '--help') {
-      console.log(`用法: acp-service [选项]
-
-选项:
-  --port, -p <n>    指定监听端口（默认: 36812）
-  --host, -h <ip>   指定绑定 IP（默认: 0.0.0.0）
-  --no-report       不向本机 node agent (36908) 报备
-  --help            显示帮助信息
-`);
-      process.exit(0);
     }
   }
   return options;
 }
 
-const options = parseArgs(process.argv.slice(2));
-
-try {
+async function runServer(options: { port?: number; host?: string; report?: boolean }) {
   attachProcessSignalHandlers();
-  await serveAcpService(options);
-} catch (error) {
-  console.error('[acp-service] 启动失败:', error instanceof Error ? error.message : error);
-  process.exit(1);
+  try {
+    await serveAcpService(options);
+  } catch (error) {
+    console.error(`[${invokedBin}] 启动失败:`, error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
+
+async function main() {
+  const isServe = rawArgs[0] === 'serve' || rawArgs[0] === 'run';
+  const hasServerExplicitFlag =
+    rawArgs[0] === '--port' ||
+    rawArgs[0] === '-p' ||
+    rawArgs[0] === '--host' ||
+    rawArgs[0] === '--no-report';
+
+  // 1. Version
+  if (rawArgs[0] === '-V' || rawArgs[0] === '--version') {
+    const version = getPackageVersion();
+    console.log(`@1agents/acp-service v${version}`);
+    return;
+  }
+
+  // 2. Help
+  if (
+    rawArgs[0] === '--help' ||
+    (rawArgs[0] === '-h' && rawArgs.length === 1) ||
+    rawArgs[0] === 'help'
+  ) {
+    printUnifiedHelp(invokedBin);
+    return;
+  }
+
+  // 3. Serve command explicit
+  if (isServe) {
+    const serveArgs = rawArgs.slice(1);
+    if (serveArgs.includes('--help') || serveArgs.includes('-h')) {
+      printServeHelp(invokedBin);
+      return;
+    }
+    const options = parseServerArgs(serveArgs);
+    await runServer(options);
+    return;
+  }
+
+  // 4. Server explicit flags e.g. `acp-service --port 36812`
+  if (hasServerExplicitFlag) {
+    const options = parseServerArgs(rawArgs);
+    await runServer(options);
+    return;
+  }
+
+  // 5. No arguments
+  if (rawArgs.length === 0) {
+    // If invoked as acp-service without arguments, default to running the server!
+    if (invokedBin === 'acp-service') {
+      await runServer({});
+      return;
+    }
+    // If invoked as 1acp or acpx with no arguments, forward to cli which displays help
+    forwardToCli(rawArgs);
+    return;
+  }
+
+  // 6. Any other subcommand or arguments -> forward directly to @scottzx/1acp CLI
+  forwardToCli(rawArgs);
+}
+
+await main();

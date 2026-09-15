@@ -64,3 +64,32 @@ test('serveAcpService serves HTTP endpoints and WebSocket', async () => {
     await service.close();
   }
 });
+
+test('CLI supports unified help and command forwarding', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const binPath = fileURLToPath(new URL('../dist/bin/acp-service.js', import.meta.url));
+
+  // 1. Test top-level --help
+  const helpOutput = execFileSync(process.execPath, [binPath, '--help'], { encoding: 'utf-8' });
+  assert.match(helpOutput, /Usage: acp-service/);
+  assert.match(helpOutput, /serve \[options\]/);
+  assert.match(helpOutput, /codex \[options\]/);
+  assert.match(helpOutput, /claude \[options\]/);
+  assert.match(helpOutput, /--port, -p/);
+
+  // 2. Test serve --help
+  const serveHelp = execFileSync(process.execPath, [binPath, 'serve', '--help'], { encoding: 'utf-8' });
+  assert.match(serveHelp, /用法: acp-service serve/);
+  assert.match(serveHelp, /--port/);
+
+  // 3. Test -V / --version
+  const versionOutput = execFileSync(process.execPath, [binPath, '-V'], { encoding: 'utf-8' });
+  assert.match(versionOutput, /@1agents\/acp-service v/);
+
+  // 4. Test config show forwarding
+  const configOutput = execFileSync(process.execPath, [binPath, 'config', 'show'], { encoding: 'utf-8' });
+  const config = JSON.parse(configOutput);
+  assert.ok(config.defaultAgent);
+});
+
