@@ -16,12 +16,19 @@ function getAcpxCliPath(): string {
 
 function getPackageVersion(): string {
   try {
-    const pkgPath = new URL('../package.json', import.meta.url);
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-    return pkg.version || '0.1.1';
-  } catch {
-    return '0.1.1';
-  }
+    const candidates = [
+      new URL('../../package.json', import.meta.url),
+      new URL('../package.json', import.meta.url),
+    ];
+    for (const url of candidates) {
+      try {
+        const content = fs.readFileSync(url, 'utf-8');
+        const pkg = JSON.parse(content);
+        if (pkg.version) return pkg.version;
+      } catch {}
+    }
+  } catch {}
+  return '0.1.3';
 }
 
 function printServeHelp(binName: string) {
