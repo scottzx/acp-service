@@ -8,10 +8,7 @@ import { attachProcessSignalHandlers } from '../src/bridge.js';
 
 const require = createRequire(import.meta.url);
 const rawArgs = process.argv.slice(2);
-const invokedBin = path.basename(
-  process.argv[1] || 'acp-service',
-  path.extname(process.argv[1] || '')
-);
+const invokedBin = 'acp-service';
 
 function getAcpxCliPath(): string {
   return require.resolve('@scottzx/1acp/dist/cli.js');
@@ -169,15 +166,9 @@ async function main() {
     return;
   }
 
-  // 5. No arguments
+  // 5. No arguments: default to running the server!
   if (rawArgs.length === 0) {
-    // If invoked as acp-service without arguments, default to running the server!
-    if (invokedBin === 'acp-service') {
-      await runServer({});
-      return;
-    }
-    // If invoked as 1acp or acpx with no arguments, forward to cli which displays help
-    forwardToCli(rawArgs);
+    await runServer({});
     return;
   }
 
