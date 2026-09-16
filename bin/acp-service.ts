@@ -28,7 +28,7 @@ function getPackageVersion(): string {
       } catch {}
     }
   } catch {}
-  return '0.1.3';
+  return '0.1.4';
 }
 
 function printServeHelp(binName: string) {
